@@ -1,0 +1,124 @@
+
+clear all
+clc
+
+%% Extract data from previous assignment
+data = load("generated_data.mat");
+
+% Assigning values using your naming style
+CA0_data = data.CA0;
+F_data   = data.F;
+CA1_data = data.CA1;
+CA2_data = data.CA2;
+t_data   = data.time_new;
+
+
+%% Step Response Identification for manipulated variable CA0 -----FOPTD-----
+
+%% Increasing step
+start1 = 1000;
+last1  = 1060;
+
+tstep   = t_data(start1:last1) - t_data(start1);
+Ui      = CA0_data(start1);
+Uf      = CA0_data(start1+1);
+ultimate_value1 = Uf - Ui;       % step change in input (corrected sign to match model behavior)
+
+% FOPTD model
+model_inc = @(parameter,t) parameter(1) * ultimate_value1 .* ...
+    (1 - exp(-max(0, t-parameter(3)) / parameter(2)));
+
+% Output deviations
+output1 = CA1_data(start1:last1) - CA1_data(start1);
+output2 = CA2_data(start1:last1) - CA2_data(start1);
+
+% Initial guessed parameters
+parameters_CA0_CA1_guess_inc = [0.06, 50/3, 1];
+parameters_CA0_CA2_guess_inc = [0.02, 50/3, 1];
+
+% Curve fitting to get model parameters
+parameters_CA0_CA1_inc = lsqcurvefit(model_inc, parameters_CA0_CA1_guess_inc, tstep, output1);
+parameters_CA0_CA2_inc = lsqcurvefit(model_inc, parameters_CA0_CA2_guess_inc, tstep, output2);
+
+
+%% Decreasing step
+start2 = 2000;
+last2  = 2060;
+
+tstep1 = t_data(start2:last2) - t_data(start2);
+
+U1i = CA0_data(start2);
+U1f = CA0_data(start2+1);
+ultimate_value2 = U1f - U1i;     % step change
+
+model_dec = @(parameter,t) parameter(1) * ultimate_value2 .* ...
+    (1 - exp(-max(0, t-parameter(3)) / parameter(2)));
+
+output3 = CA1_data(start2:last2) - CA1_data(start2);
+output4 = CA2_data(start2:last2) - CA2_data(start2);
+
+parameters_CA0_CA1_guess_dec = [-0.06/ultimate_value2, 50/3, 0];
+parameters_CA0_CA2_guess_dec = [-0.02/ultimate_value2, 50/3, 0];
+
+parameters_CA0_CA1_dec = lsqcurvefit(model_dec, parameters_CA0_CA1_guess_dec, tstep1, output3);
+parameters_CA0_CA2_dec = lsqcurvefit(model_dec, parameters_CA0_CA2_guess_dec, tstep1, output4);
+
+
+%% Save selected model parameters (based on CA2 response only)
+
+kp(1)   = parameters_CA0_CA2_inc(1);
+tauP(1) = parameters_CA0_CA2_inc(2);
+theta(1)= parameters_CA0_CA2_inc(3);
+
+kp(2)   = parameters_CA0_CA2_dec(1);
+tauP(2) = parameters_CA0_CA2_dec(2);
+theta(2)= parameters_CA0_CA2_dec(3);
+
+
+%% Take mean of parameters from both excitation directions
+
+Kp    = mean(kp)
+TauP  = mean(tauP)
+Theta = mean(theta)
+
+save("parameters.mat","Kp","TauP","Theta");
+
+
+%% ---------- Model Verification (on remaining 30 percent data) -----------------
+
+%% Verification 1
+output5 = CA2_data(3000:3050);
+tstep2  = t_data(3000:3050) - t_data(3000);
+U3      = CA0_data(3050) - CA0_data(3000);
+
+model_test = @(t,deltaU) Kp * deltaU * (1 - exp(-max(0, t - Theta) / TauP));
+
+model_output = model_test(tstep2, U3);
+
+figure(1);
+plot(tstep2, output5, 'b', 'DisplayName', 'Real Data');
+hold on;
+plot(tstep2, CA2_data(3000) + model_output, 'r', 'DisplayName', 'Model Output');
+xlabel('Time');
+ylabel('Output CA2');
+title('Model Validation for remaining data ');
+legend show;
+grid on;
+
+
+%% Verification 2
+output6 = CA2_data(4000:4050);
+tstep3  = t_data(4000:4050) - t_data(4000);
+U4      = CA0_data(4050) - CA0_data(4000);
+
+model_output2 = model_test(tstep3, U4);
+
+figure(2);
+plot(tstep3, output6, 'o', 'DisplayName', 'Real Data');
+hold on;
+plot(tstep3, CA2_data(4000) + model_output2, 'g', 'DisplayName', 'Model Output');
+xlabel('Time');
+ylabel('Output CA2');
+title('Model Validification for remaining data ');
+legend show;
+grid on;

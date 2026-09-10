@@ -1,0 +1,32 @@
+clc;
+clear all
+
+%% ---------- Closed-Loop Stability via Routh–Hurwitz Test -------------
+
+% Load process parameters
+load("parameters.mat");
+
+% Compute minimum controller gain ensuring stability
+Kc_min = -(1/Kp);
+disp('Routh–Hurwitz Stability Requirement:')
+fprintf('Condition:  1 + Kc*Kp > 0  -->  Kc > %.6f\n\n', Kc_min);
+
+% Positive gains are typically used in practice
+disp('Practical Requirement:  Kc should be positive for physical systems.');
+
+% Determine open-loop pole
+pole = -1/TauP;
+fprintf('\nOpen-loop pole location:  s = %.6f\n', pole);
+
+%% ---------- Transfer Function & Root Locus Plot ----------------------
+
+% Define process model G(s) = Kp/(TauP*s + 1)
+numG = Kp;
+denG = [TauP 1];
+Gprocess = tf(numG, denG);
+
+% Plot root locus
+figure;
+rlocus(Gprocess);
+grid on;
+title('Root Locus of G(s) = K_p / (\tau s + 1)');

@@ -1,0 +1,126 @@
+
+clear all
+clc
+
+%% setting parameter
+global CA10 CA20 CA0i F V k
+
+CA10 = 0.236;   % initial guess CA1
+CA20 = 0.05;    % initial guess CA2
+CA0i = 0.925;   % manipulated variable (CA0)
+F    = 0.085;   % disturbance variable
+V    = 2.1;     % volumetric flow rate
+k    = 0.040;   % rate constant
+
+%% Steady State Identification
+
+X0 = [CA10; CA20];      % initial state [CA1; CA2]
+
+load("steadyState.mat") % if this sets a steady state,
+
+CA_value(1) = CA20;     % store CA2 initial value 
+time(1)     = 0;
+y0          = X0;       % current state vector
+
+%% steady state setpoint
+
+y_setPoint = CA_ss(1,2);      % CA2 steady-state value
+
+%% loading parameters Kp TauP Theta from .mat file (CA2 is output and CA0 is input while F is disturbance)
+
+
+
+% we are controlling only the output varaible 
+
+load("parameters.mat"); % expects Kp, TauP, Theta
+
+Tau_c = TauP / 2;       % desired closed-loop time constant
+
+Kc   = (1 / Kp) * (TauP / (Tau_c + Theta));  % controller gain
+TauI = TauP;             % not used (for PI)
+
+CA0_value(1)   = CA0i;   % initial manipulated variable
+time_series(1) = 0;      % not used further, but kept for your structure
+
+%% Running the process
+
+for i = 1:1:3000
+   
+    % Setpoint profile (servo problem)
+    if i <= 500
+        Y_setPoint(i) = y_setPoint;
+    else
+        Y_setPoint(i) = 1.05 * y_setPoint;   % 5% increase in setpoint
+    end
+
+    % Disturbance profile (regulatory problem)
+    if i >= 2000
+        distVar(i) = 1.05 * F;               % 5% increase in F
+    else
+        distVar(i) = F;
+    end
+   
+    % Nonlinear CSTR dynamics over 1 time unit
+    [t, Y] = ode45(@(t, CA) CSTR_Non_Linear(t, CA, CA0_value(i), distVar(i)), ...
+                   [0, 1], y0);
+    y0 = Y(end, :).';     % update state for next step
+   
+    % Store CA2 and time
+    CA_value(i+1) = y0(2);
+    time(i+1)     = i;
+   
+    % P controller based on CA2
+    error(i) = Y_setPoint(i) - y0(2);
+   
+    % update manipulated variable CA0
+    CA0_value(i+1) = CA0i + Kc * error(i);
+
+end
+
+%% Plotting
+
+figure(1)
+sgtitle('Feedback control design for P controller'); % Add a title for the
+subplot(2,2,1)
+plot(time(2:end), CA_value(2:end), 'b-', 'LineWidth', 1.5);
+xlabel('Time (s)');
+ylabel('Concentration CA2');
+title('Concentration vs Time');
+grid on;
+
+subplot(2,2,2)
+plot(time(2:end), CA0_value(2:end), 'r-', 'LineWidth', 1.5);
+xlabel('Time (s)');
+ylabel('CA0');
+title('Manipulative Variable vs Time');
+grid on;
+
+subplot(2,2,3)
+plot(time(2:end), Y_setPoint, 'g-', 'LineWidth', 1.5);
+xlabel('Time (s)');
+ylabel('Setpoint');
+title('Setpoint vs Time');
+grid on;
+
+subplot(2,2,4)
+plot(time(2:end), distVar, 'm-', 'LineWidth', 1.5);
+xlabel('Time (s)');
+ylabel('Disturbance Variable');
+title('Disturbance Variable vs Time');
+grid on;
+
+%% Nonlinear CSTR model
+function y = CSTR_Non_Linear(t, CA, CA0, F)
+
+    global V k
+
+    CA1 = CA(1);
+    CA2 = CA(2);
+
+    y1 = (F/V) * (CA0 - CA1) - V * k * CA1;
+    y2 = (F/V) * (CA1 - CA2) - V * k * CA2;
+   
+    y = [y1; y2];
+
+end
+\
